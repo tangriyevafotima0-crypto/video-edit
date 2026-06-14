@@ -1,173 +1,274 @@
 #!/usr/bin/env python3
 """
-Create a subtitle video from source audio.
-Extracts audio, transcribes with Whisper, generates SRT subtitles,
-and renders a black background video with white subtitles and original audio.
+Upgraded Subtitle Video Pipeline
+---------------------------------
+Generates an ambition-themed dark background image (576x1024) using Pillow,
+then uses ffmpeg to compose the final video with:
+- The generated background as a static video loop
+- Styled subtitles (golden/amber, bold, outlined, shadowed)
+- Fade-in/fade-out transitions
+- Original audio (codec-copied, untouched)
+
+Prerequisites:
+- subtitles.srt (already exists)
+- audio.aac (already extracted)
+- Pillow, numpy installed
+- ffmpeg available
 """
 
 import os
 import subprocess
-import whisper
+import math
+import numpy as np
+from PIL import Image, ImageDraw, ImageFilter
 
-# Paths
+# Configuration
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-SOURCE_VIDEO = os.path.join(SCRIPT_DIR, "SnapTikZ.App_7522766063323385095.mp4")
-EXTRACTED_AUDIO = os.path.join(SCRIPT_DIR, "audio.aac")
-SUBTITLES_SRT = os.path.join(SCRIPT_DIR, "subtitles.srt")
-OUTPUT_VIDEO = os.path.join(SCRIPT_DIR, "output_with_subtitles.mp4")
-
-# Video settings
 WIDTH = 576
 HEIGHT = 1024
+BACKGROUND_PATH = os.path.join(SCRIPT_DIR, "background.png")
+SUBTITLES_PATH = os.path.join(SCRIPT_DIR, "subtitles.srt")
+AUDIO_PATH = os.path.join(SCRIPT_DIR, "audio.aac")
+OUTPUT_PATH = os.path.join(SCRIPT_DIR, "output_with_subtitles.mp4")
+DURATION = 60.7
 FPS = 30
+FADE_DURATION = 1.5
 
 
-def extract_audio():
-    """Extract audio from source video without re-encoding (copy codec)."""
-    print("Step 1: Extracting audio from source video...")
-    cmd = [
-        "ffmpeg", "-y",
-        "-i", SOURCE_VIDEO,
-        "-vn",
-        "-acodec", "copy",
-        EXTRACTED_AUDIO
-    ]
-    subprocess.run(cmd, check=True, capture_output=True)
-    print(f"  Audio extracted to: {EXTRACTED_AUDIO}")
+def generate_background():
+    """Generate a dark ambition-themed background image with gradients and geometric patterns."""
+    print("Generating ambition-themed background image...")
+
+    # Create base image with dark gradient (dark navy/purple to black)
+    img = np.zeros((HEIGHT, WIDTH, 3), dtype=np.float64)
+
+    # Radial gradient from center - dark purple/navy emanating outward to black
+    center_y, center_x = HEIGHT * 0.35, WIDTH * 0.5
+    for y in range(HEIGHT):
+        for x in range(WIDTH):
+            # Distance from the light source point (upper center area)
+            dist = math.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
+            max_dist = math.sqrt(center_x ** 2 + center_y ** 2) * 1.2
+
+            # Normalized distance (0 at center, 1 at edges)
+            norm_dist = min(dist / max_dist, 1.0)
+
+            # Exponential falloff for a dramatic light effect
+            intensity = math.exp(-3.0 * norm_dist)
+
+            # Dark navy/purple base with radial glow
+            # R: slight warm tone near center
+            img[y, x, 0] = 15 + 40 * intensity
+            # G: minimal
+            img[y, x, 1] = 5 + 15 * intensity
+            # B: deep blue/purple dominant
+            img[y, x, 2] = 25 + 60 * intensity
+
+    # Convert to uint8
+    img = np.clip(img, 0, 255).astype(np.uint8)
+    pil_img = Image.fromarray(img, 'RGB')
+
+    # Add geometric patterns - angular lines evoking power/ambition
+    draw = ImageDraw.Draw(pil_img)
+
+    # Draw subtle angular/geometric shapes (low opacity simulation with dark colors)
+    # Diagonal lines converging toward upper center
+    line_color_subtle = (25, 15, 45)  # Very dark purple
+    line_color_accent = (35, 20, 55)  # Slightly brighter purple accent
+
+    # Converging lines from bottom corners toward the light source
+    for i in range(12):
+        offset = i * 50
+        # Lines from bottom-left area
+        draw.line(
+            [(0, HEIGHT - offset), (int(center_x), int(center_y))],
+            fill=line_color_subtle, width=1
+        )
+        # Lines from bottom-right area
+        draw.line(
+            [(WIDTH, HEIGHT - offset), (int(center_x), int(center_y))],
+            fill=line_color_subtle, width=1
+        )
+
+    # Add subtle diamond/rhombus shapes scattered around
+    for i in range(6):
+        cx = WIDTH * (0.2 + 0.6 * (i / 5.0))
+        cy = HEIGHT * (0.5 + 0.08 * math.sin(i * 1.5))
+        size = 30 + i * 10
+        points = [
+            (cx, cy - size),
+            (cx + size * 0.6, cy),
+            (cx, cy + size),
+            (cx - size * 0.6, cy)
+        ]
+        draw.polygon(points, outline=line_color_accent)
+
+    # Add faint grid lines (very subtle)
+    grid_color = (18, 12, 30)
+    for y in range(0, HEIGHT, 80):
+        draw.line([(0, y), (WIDTH, y)], fill=grid_color, width=1)
+    for x in range(0, WIDTH, 80):
+        draw.line([(x, 0), (x, HEIGHT)], fill=grid_color, width=1)
+
+    # Add a subtle radial glow/energy burst overlay
+    glow_layer = Image.new('RGB', (WIDTH, HEIGHT), (0, 0, 0))
+    glow_draw = ImageDraw.Draw(glow_layer)
+
+    # Concentric circles (faint) around the light source
+    for r in range(50, 400, 40):
+        brightness = max(5, int(25 * math.exp(-r / 200.0)))
+        glow_draw.ellipse(
+            [int(center_x - r), int(center_y - r),
+             int(center_x + r), int(center_y + r)],
+            outline=(brightness, brightness // 2, brightness + 10)
+        )
+
+    # Blur the glow layer for soft effect
+    glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(radius=3))
+
+    # Blend glow with main image
+    from PIL import ImageChops
+    pil_img = ImageChops.add(pil_img, glow_layer)
+
+    # Add a slight vignette (darken edges)
+    vignette = Image.new('L', (WIDTH, HEIGHT), 0)
+    vignette_draw = ImageDraw.Draw(vignette)
+    for i in range(30):
+        alpha = int(255 * (1.0 - i / 30.0) * 0.4)
+        vignette_draw.rectangle(
+            [i * 3, i * 3, WIDTH - i * 3, HEIGHT - i * 3],
+            outline=alpha
+        )
+    # Apply vignette as darkening mask
+    vignette = vignette.filter(ImageFilter.GaussianBlur(radius=20))
+    vignette_array = np.array(vignette, dtype=np.float64) / 255.0
+    img_array = np.array(pil_img, dtype=np.float64)
+
+    # Vignette: darker at edges (invert mask so 0=edge, 1=center)
+    vignette_mask = 0.6 + 0.4 * vignette_array  # Range from 0.6 (edges) to 1.0 (center)
+    for c in range(3):
+        img_array[:, :, c] *= vignette_mask
+    img_array = np.clip(img_array, 0, 255).astype(np.uint8)
+    pil_img = Image.fromarray(img_array, 'RGB')
+
+    pil_img.save(BACKGROUND_PATH, 'PNG')
+    print(f"Background saved: {BACKGROUND_PATH} ({WIDTH}x{HEIGHT})")
+    return BACKGROUND_PATH
 
 
-def transcribe_audio():
-    """Transcribe audio using Whisper and return segments."""
-    print("Step 2: Transcribing audio with Whisper (base model, English)...")
-    model = whisper.load_model("base")
-    result = model.transcribe(EXTRACTED_AUDIO, language="en")
-    segments = result["segments"]
-    print(f"  Transcription complete: {len(segments)} segments found")
-    return segments
+def create_video():
+    """Use ffmpeg to create the final video with background, subtitles, fades, and audio."""
+    print("Creating video with ffmpeg...")
 
+    # Calculate fade-out start time
+    fade_out_start = DURATION - FADE_DURATION
 
-def format_srt_time(seconds):
-    """Convert seconds to SRT time format: HH:MM:SS,mmm"""
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-    millis = int((seconds % 1) * 1000)
-    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
-
-
-def generate_srt(segments):
-    """Generate SRT subtitle file from Whisper segments."""
-    print("Step 3: Generating SRT subtitle file...")
-    with open(SUBTITLES_SRT, "w", encoding="utf-8") as f:
-        for i, seg in enumerate(segments, 1):
-            start = format_srt_time(seg["start"])
-            end = format_srt_time(seg["end"])
-            text = seg["text"].strip()
-            f.write(f"{i}\n")
-            f.write(f"{start} --> {end}\n")
-            f.write(f"{text}\n\n")
-    print(f"  SRT file saved to: {SUBTITLES_SRT}")
-
-
-def create_output_video():
-    """Create final video with black background, burned-in subtitles, and original audio."""
-    print("Step 4: Creating output video with black background and subtitles...")
-
-    # Get the duration of the audio
-    probe_cmd = [
-        "ffprobe", "-v", "quiet",
-        "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        EXTRACTED_AUDIO
-    ]
-    result = subprocess.run(probe_cmd, check=True, capture_output=True, text=True)
-    duration = float(result.stdout.strip())
-    print(f"  Audio duration: {duration:.2f}s")
-
-    # Escape the SRT path for ffmpeg subtitles filter
-    # Need to escape colons, backslashes, and brackets in the path for the subtitles filter
-    srt_path_escaped = SUBTITLES_SRT.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
-
-    # Use force_style for subtitle styling to avoid font path bracket issues
-    subtitle_filter = (
-        f"subtitles='{srt_path_escaped}'"
-        f":force_style='FontName=Noto Sans,Bold=1,FontSize=26,"
-        f"PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
-        f"Outline=2,Shadow=1,Alignment=2,MarginV=60'"
+    # Subtitle styling using force_style (ASS style format)
+    # Golden/amber color: &H0080DDFF (BGR format in ASS: FF DD 80 00 -> gold/amber)
+    # Strong black outline, drop shadow
+    subtitle_style = (
+        "FontName=Noto Sans,"
+        "Bold=1,"
+        "FontSize=34,"
+        "PrimaryColour=&H0080DDFF,"
+        "OutlineColour=&H00000000,"
+        "BackColour=&H80000000,"
+        "Outline=3,"
+        "Shadow=2,"
+        "MarginV=60,"
+        "Alignment=2"
     )
 
-    # Build the ffmpeg command
-    # - Generate black video background
-    # - Burn in subtitles
-    # - Mux original audio (copy, no re-encoding)
+    # Escape the subtitles path for ffmpeg filter (replace backslash, colon, brackets)
+    srt_escaped = SUBTITLES_PATH.replace("\\", "/").replace(":", "\\:")
+
+    # Build the complex filter
+    # 1. Loop background image for duration
+    # 2. Apply subtitles with force_style
+    # 3. Apply fade-in and fade-out
+    video_filter = (
+        f"loop=loop=-1:size=1:start=0,setpts=PTS-STARTPTS,"
+        f"format=yuv420p,"
+        f"subtitles='{srt_escaped}':force_style='{subtitle_style}',"
+        f"fade=t=in:st=0:d={FADE_DURATION},"
+        f"fade=t=out:st={fade_out_start}:d={FADE_DURATION}"
+    )
+
     cmd = [
         "ffmpeg", "-y",
-        # Generate black background video
-        "-f", "lavfi",
-        "-i", f"color=c=black:s={WIDTH}x{HEIGHT}:r={FPS}:d={duration}",
-        # Input the original audio
-        "-i", EXTRACTED_AUDIO,
-        # Apply subtitles filter to video
-        "-filter_complex", f"[0:v]{subtitle_filter}[v]",
-        "-map", "[v]",
-        "-map", "1:a",
-        # Video encoding
+        "-i", BACKGROUND_PATH,
+        "-i", AUDIO_PATH,
+        "-vf", video_filter,
         "-c:v", "libx264",
         "-preset", "medium",
         "-crf", "23",
-        "-pix_fmt", "yuv420p",
-        # Audio: copy without re-encoding
         "-c:a", "copy",
-        # Shortest stream determines duration
         "-shortest",
-        OUTPUT_VIDEO
+        "-t", str(DURATION),
+        "-r", str(FPS),
+        "-s", f"{WIDTH}x{HEIGHT}",
+        OUTPUT_PATH
     ]
 
-    print(f"  Running ffmpeg...")
-    subprocess.run(cmd, check=True, capture_output=True)
-    print(f"  Output video saved to: {OUTPUT_VIDEO}")
+    print(f"Running ffmpeg command...")
+    print(f"  Output: {OUTPUT_PATH}")
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"ffmpeg STDERR:\n{result.stderr}")
+        raise RuntimeError(f"ffmpeg failed with return code {result.returncode}")
+
+    print(f"Video created successfully: {OUTPUT_PATH}")
 
 
 def verify_output():
-    """Verify the output video has both audio and video streams."""
-    print("Step 5: Verifying output video...")
+    """Verify the output video with ffprobe."""
+    print("\nVerifying output video...")
     cmd = [
         "ffprobe", "-v", "quiet",
         "-print_format", "json",
-        "-show_streams",
-        OUTPUT_VIDEO
+        "-show_streams", "-show_format",
+        OUTPUT_PATH
     ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"ffprobe failed: {result.stderr}")
+
     import json
-    result = subprocess.run(cmd, check=True, capture_output=True, text=True)
     data = json.loads(result.stdout)
-    streams = data["streams"]
+    streams = data.get("streams", [])
+    fmt = data.get("format", {})
 
-    has_video = any(s["codec_type"] == "video" for s in streams)
-    has_audio = any(s["codec_type"] == "audio" for s in streams)
+    video_streams = [s for s in streams if s["codec_type"] == "video"]
+    audio_streams = [s for s in streams if s["codec_type"] == "audio"]
 
-    print(f"  Video stream: {'YES' if has_video else 'NO'}")
-    print(f"  Audio stream: {'YES' if has_audio else 'NO'}")
+    if not video_streams:
+        raise RuntimeError("No video stream found!")
+    if not audio_streams:
+        raise RuntimeError("No audio stream found!")
 
-    if has_video and has_audio:
-        # Get file size
-        size_mb = os.path.getsize(OUTPUT_VIDEO) / (1024 * 1024)
-        print(f"  File size: {size_mb:.1f} MB")
-        print("  Verification PASSED!")
-    else:
-        raise RuntimeError("Output video is missing audio or video stream!")
+    v = video_streams[0]
+    a = audio_streams[0]
+
+    print(f"  Video: {v['width']}x{v['height']}, codec={v['codec_name']}")
+    print(f"  Audio: codec={a['codec_name']}, sample_rate={a.get('sample_rate', 'N/A')}")
+    print(f"  Duration: {fmt.get('duration', 'N/A')}s")
+
+    assert int(v['width']) == WIDTH, f"Width mismatch: {v['width']}"
+    assert int(v['height']) == HEIGHT, f"Height mismatch: {v['height']}"
+    assert a['codec_name'] == 'aac', f"Audio codec mismatch: {a['codec_name']}"
+
+    print("\nAll checks passed!")
 
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("Subtitle Video Creator")
-    print("=" * 60)
+    # Step 1: Generate the ambition-themed background
+    generate_background()
 
-    extract_audio()
-    segments = transcribe_audio()
-    generate_srt(segments)
-    create_output_video()
+    # Step 2: Create the video with subtitles, fades, and audio
+    create_video()
+
+    # Step 3: Verify the output
     verify_output()
 
-    print("=" * 60)
-    print("DONE! Output: output_with_subtitles.mp4")
-    print("=" * 60)
+    print("\nDone! Output video: output_with_subtitles.mp4")
