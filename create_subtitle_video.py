@@ -1,32 +1,33 @@
 #!/usr/bin/env python3
 """
-Upgraded Subtitle Video Pipeline
----------------------------------
-Generates an ambition-themed dark background image (576x1024) using Pillow,
+Subtitle Video Pipeline
+------------------------
+Downloads a real ambition-themed background image from the internet,
+resizes it to 576x1024 (portrait), darkens it for readability,
 then uses ffmpeg to compose the final video with:
-- The generated background as a static video loop
-- Styled subtitles (golden/amber, bold, outlined, shadowed)
+- The real photo as a static video background
+- Clean, small subtitles at the bottom (FontSize=20)
 - Fade-in/fade-out transitions
 - Original audio (codec-copied, untouched)
 
 Prerequisites:
 - subtitles.srt (already exists)
 - audio.aac (already extracted)
-- Pillow, numpy installed
+- Pillow installed
 - ffmpeg available
+- Internet access (for downloading background image)
 """
 
 import os
 import subprocess
-import math
-import numpy as np
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageEnhance
 
 # Configuration
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 WIDTH = 576
 HEIGHT = 1024
 BACKGROUND_PATH = os.path.join(SCRIPT_DIR, "background.png")
+BACKGROUND_RAW_PATH = os.path.join(SCRIPT_DIR, "background_raw.jpg")
 SUBTITLES_PATH = os.path.join(SCRIPT_DIR, "subtitles.srt")
 AUDIO_PATH = os.path.join(SCRIPT_DIR, "audio.aac")
 OUTPUT_PATH = os.path.join(SCRIPT_DIR, "output_with_subtitles.mp4")
@@ -34,125 +35,59 @@ DURATION = 60.7
 FPS = 30
 FADE_DURATION = 1.5
 
+# Unsplash image: snowy mountain peak at night - evokes ambition and determination
+BACKGROUND_URL = "https://images.unsplash.com/photo-1519681393784-d120267933ba?w=1080&q=80"
 
-def generate_background():
-    """Generate a dark ambition-themed background image with gradients and geometric patterns."""
-    print("Generating ambition-themed background image...")
 
-    # Create base image with dark gradient (dark navy/purple to black)
-    img = np.zeros((HEIGHT, WIDTH, 3), dtype=np.float64)
+def download_background():
+    """Download a real ambition-themed image and resize to 576x1024."""
+    print("Downloading ambition-themed background image...")
 
-    # Radial gradient from center - dark purple/navy emanating outward to black
-    center_y, center_x = HEIGHT * 0.35, WIDTH * 0.5
-    for y in range(HEIGHT):
-        for x in range(WIDTH):
-            # Distance from the light source point (upper center area)
-            dist = math.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
-            max_dist = math.sqrt(center_x ** 2 + center_y ** 2) * 1.2
+    # Download image using wget
+    cmd = ["wget", "-O", BACKGROUND_RAW_PATH, BACKGROUND_URL]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"Failed to download background image: {result.stderr}")
 
-            # Normalized distance (0 at center, 1 at edges)
-            norm_dist = min(dist / max_dist, 1.0)
+    print(f"Downloaded raw image to {BACKGROUND_RAW_PATH}")
 
-            # Exponential falloff for a dramatic light effect
-            intensity = math.exp(-3.0 * norm_dist)
+    # Open and resize to portrait 576x1024
+    img = Image.open(BACKGROUND_RAW_PATH)
+    print(f"  Raw image size: {img.size}")
 
-            # Dark navy/purple base with radial glow
-            # R: slight warm tone near center
-            img[y, x, 0] = 15 + 40 * intensity
-            # G: minimal
-            img[y, x, 1] = 5 + 15 * intensity
-            # B: deep blue/purple dominant
-            img[y, x, 2] = 25 + 60 * intensity
+    target_w, target_h = WIDTH, HEIGHT
+    target_ratio = target_w / target_h
 
-    # Convert to uint8
-    img = np.clip(img, 0, 255).astype(np.uint8)
-    pil_img = Image.fromarray(img, 'RGB')
+    w, h = img.size
+    current_ratio = w / h
 
-    # Add geometric patterns - angular lines evoking power/ambition
-    draw = ImageDraw.Draw(pil_img)
+    # Crop to target aspect ratio
+    if current_ratio > target_ratio:
+        # Image is wider - crop width
+        new_w = int(h * target_ratio)
+        left = (w - new_w) // 2
+        img = img.crop((left, 0, left + new_w, h))
+    else:
+        # Image is taller - crop height
+        new_h = int(w / target_ratio)
+        top = (h - new_h) // 2
+        img = img.crop((0, top, w, top + new_h))
 
-    # Draw subtle angular/geometric shapes (low opacity simulation with dark colors)
-    # Diagonal lines converging toward upper center
-    line_color_subtle = (25, 15, 45)  # Very dark purple
-    line_color_accent = (35, 20, 55)  # Slightly brighter purple accent
+    # Resize to exact target dimensions
+    img = img.resize((target_w, target_h), Image.LANCZOS)
 
-    # Converging lines from bottom corners toward the light source
-    for i in range(12):
-        offset = i * 50
-        # Lines from bottom-left area
-        draw.line(
-            [(0, HEIGHT - offset), (int(center_x), int(center_y))],
-            fill=line_color_subtle, width=1
-        )
-        # Lines from bottom-right area
-        draw.line(
-            [(WIDTH, HEIGHT - offset), (int(center_x), int(center_y))],
-            fill=line_color_subtle, width=1
-        )
+    # Darken the image for better subtitle readability
+    enhancer = ImageEnhance.Brightness(img)
+    img = enhancer.enhance(0.55)
 
-    # Add subtle diamond/rhombus shapes scattered around
-    for i in range(6):
-        cx = WIDTH * (0.2 + 0.6 * (i / 5.0))
-        cy = HEIGHT * (0.5 + 0.08 * math.sin(i * 1.5))
-        size = 30 + i * 10
-        points = [
-            (cx, cy - size),
-            (cx + size * 0.6, cy),
-            (cx, cy + size),
-            (cx - size * 0.6, cy)
-        ]
-        draw.polygon(points, outline=line_color_accent)
-
-    # Add faint grid lines (very subtle)
-    grid_color = (18, 12, 30)
-    for y in range(0, HEIGHT, 80):
-        draw.line([(0, y), (WIDTH, y)], fill=grid_color, width=1)
-    for x in range(0, WIDTH, 80):
-        draw.line([(x, 0), (x, HEIGHT)], fill=grid_color, width=1)
-
-    # Add a subtle radial glow/energy burst overlay
-    glow_layer = Image.new('RGB', (WIDTH, HEIGHT), (0, 0, 0))
-    glow_draw = ImageDraw.Draw(glow_layer)
-
-    # Concentric circles (faint) around the light source
-    for r in range(50, 400, 40):
-        brightness = max(5, int(25 * math.exp(-r / 200.0)))
-        glow_draw.ellipse(
-            [int(center_x - r), int(center_y - r),
-             int(center_x + r), int(center_y + r)],
-            outline=(brightness, brightness // 2, brightness + 10)
-        )
-
-    # Blur the glow layer for soft effect
-    glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(radius=3))
-
-    # Blend glow with main image
-    from PIL import ImageChops
-    pil_img = ImageChops.add(pil_img, glow_layer)
-
-    # Add a slight vignette (darken edges)
-    vignette = Image.new('L', (WIDTH, HEIGHT), 0)
-    vignette_draw = ImageDraw.Draw(vignette)
-    for i in range(30):
-        alpha = int(255 * (1.0 - i / 30.0) * 0.4)
-        vignette_draw.rectangle(
-            [i * 3, i * 3, WIDTH - i * 3, HEIGHT - i * 3],
-            outline=alpha
-        )
-    # Apply vignette as darkening mask
-    vignette = vignette.filter(ImageFilter.GaussianBlur(radius=20))
-    vignette_array = np.array(vignette, dtype=np.float64) / 255.0
-    img_array = np.array(pil_img, dtype=np.float64)
-
-    # Vignette: darker at edges (invert mask so 0=edge, 1=center)
-    vignette_mask = 0.6 + 0.4 * vignette_array  # Range from 0.6 (edges) to 1.0 (center)
-    for c in range(3):
-        img_array[:, :, c] *= vignette_mask
-    img_array = np.clip(img_array, 0, 255).astype(np.uint8)
-    pil_img = Image.fromarray(img_array, 'RGB')
-
-    pil_img.save(BACKGROUND_PATH, 'PNG')
+    # Save as PNG
+    img.save(BACKGROUND_PATH, "PNG")
     print(f"Background saved: {BACKGROUND_PATH} ({WIDTH}x{HEIGHT})")
+
+    # Clean up raw download
+    if os.path.exists(BACKGROUND_RAW_PATH):
+        os.remove(BACKGROUND_RAW_PATH)
+
     return BACKGROUND_PATH
 
 
@@ -163,29 +98,27 @@ def create_video():
     # Calculate fade-out start time
     fade_out_start = DURATION - FADE_DURATION
 
-    # Subtitle styling using force_style (ASS style format)
-    # Golden/amber color: &H0080DDFF (BGR format in ASS: FF DD 80 00 -> gold/amber)
-    # Strong black outline, drop shadow
+    # Subtitle styling - clean, small, bottom-positioned
+    # FontSize=20 for readable but not overwhelming text
+    # White primary color with black outline for clean look on any background
+    # Alignment=2 (bottom-center), MarginV=40 for comfortable bottom padding
     subtitle_style = (
         "FontName=Noto Sans,"
         "Bold=1,"
-        "FontSize=34,"
-        "PrimaryColour=&H0080DDFF,"
+        "FontSize=20,"
+        "PrimaryColour=&H00FFFFFF,"
         "OutlineColour=&H00000000,"
         "BackColour=&H80000000,"
-        "Outline=3,"
-        "Shadow=2,"
-        "MarginV=60,"
+        "Outline=2,"
+        "Shadow=1,"
+        "MarginV=40,"
         "Alignment=2"
     )
 
-    # Escape the subtitles path for ffmpeg filter (replace backslash, colon, brackets)
+    # Escape the subtitles path for ffmpeg filter
     srt_escaped = SUBTITLES_PATH.replace("\\", "/").replace(":", "\\:")
 
-    # Build the complex filter
-    # 1. Loop background image for duration
-    # 2. Apply subtitles with force_style
-    # 3. Apply fade-in and fade-out
+    # Build the video filter chain
     video_filter = (
         f"loop=loop=-1:size=1:start=0,setpts=PTS-STARTPTS,"
         f"format=yuv420p,"
@@ -210,7 +143,7 @@ def create_video():
         OUTPUT_PATH
     ]
 
-    print(f"Running ffmpeg command...")
+    print("Running ffmpeg command...")
     print(f"  Output: {OUTPUT_PATH}")
 
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -262,8 +195,8 @@ def verify_output():
 
 
 if __name__ == "__main__":
-    # Step 1: Generate the ambition-themed background
-    generate_background()
+    # Step 1: Download and prepare the ambition-themed background
+    download_background()
 
     # Step 2: Create the video with subtitles, fades, and audio
     create_video()

@@ -1,0 +1,29 @@
+{
+  "project_type": "Python video processing pipeline",
+  "language": "Python",
+  "build_system": "pip for dependencies, script-based execution",
+  "test_framework": "manual verification (video output inspection with ffprobe)",
+  "build_command": "pip install Pillow numpy",
+  "test_command": "python3 /projects/sandbox/video-edit/create_subtitle_video.py",
+  "verification_instructions": "Run the upgraded script, verify output video exists, has audio+video streams, and duration matches ~60.7s",
+  "snapshot_or_generated_files": "output_with_subtitles.mp4 is the final deliverable, background.png is an intermediate artifact",
+  "setup_instructions": "pip install Pillow numpy (already installed). ffmpeg available at /usr/local/bin/ffmpeg. Noto Sans font at /usr/share/fonts/google-noto-vf/NotoSans[wght].ttf",
+  "environment_constraints": "OPEN_INTERNET. Python 3.9 via pyenv. Pillow 11.3.0 installed. ffmpeg available. No moviepy needed - using Pillow for image generation and ffmpeg for video composition.",
+  "contribution_requirements": "Commit the updated script, background image, and output video to the repository",
+  "key_patterns": "Single script pipeline. Use Pillow to generate a dark/ambient background image programmatically (no external downloads). Use ffmpeg complex filter chains for transitions, fades, and dynamic subtitle effects. Audio must be codec-copied (untouched).",
+  "relevant_files": [
+    "/projects/sandbox/video-edit/create_subtitle_video.py",
+    "/projects/sandbox/video-edit/subtitles.srt",
+    "/projects/sandbox/video-edit/audio.aac",
+    "/projects/sandbox/video-edit/output_with_subtitles.mp4"
+  ],
+  "directory_structure": "Flat repo: source video, script, SRT file, audio, output video all at root level",
+  "source_video_info": {
+    "resolution": "576x1024",
+    "fps": 30,
+    "duration_seconds": 60.7,
+    "audio_codec": "aac",
+    "audio_sample_rate": 44100,
+    "audio_channels": 2
+  }
+}

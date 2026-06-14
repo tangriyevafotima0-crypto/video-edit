@@ -1,0 +1,31 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Replace the plain black background with a dark ambition-themed background image generated with Pillow, add fade/transition effects between subtitle segments, upgrade subtitle styling with glow/shadow effects, and regenerate the output video with all visual improvements while keeping audio untouched (codec copy).",
+  "status": "completed",
+  "findings_v2": "Reworked to download a real ambition-themed mountain peak image from Unsplash instead of generating programmatically. FontSize reduced from 34 to 20 for clean readable subtitles. PrimaryColour changed to white (&H00FFFFFF) for better contrast on real photo background. MarginV=40, Alignment=2 keeps subtitles at bottom-center. Audio remains codec-copied (untouched). Output verified: 576x1024 H264 video, AAC audio, 60.7s duration.",
+  "steps": [
+    "Step 1: Rewrite /projects/sandbox/video-edit/create_subtitle_video.py to be a complete upgraded pipeline script. The new script should NOT use whisper (subtitles.srt already exists) and should NOT re-extract audio (audio.aac already exists).",
+    "Step 2: Generate a dark ambition-themed background image (576x1024) using Pillow. The background should evoke power/ambition/darkness - use deep dark gradients (dark navy/purple to black), add subtle geometric patterns or radial light effects (like a distant light source or energy burst), maybe faint grid lines or abstract angular shapes. Save as /projects/sandbox/video-edit/background.png. This should be a STATIC image - not a video background.",
+    "Step 3: Use ffmpeg to create the final video by: (a) using the generated background.png as the video background for the full duration (~60.7s), (b) burning in subtitles from subtitles.srt with upgraded styling - use larger font size (32-36), a golden/amber primary color (like &H0080DDFF for gold), bold weight, strong outline (3px black), drop shadow, centered with good margins, (c) add a global fade-in at the start (first 1.5s) and fade-out at the end (last 1.5s) using the ffmpeg fade filter, (d) mux in audio.aac with -c:a copy (no re-encoding).",
+    "Step 4: Save the output as /projects/sandbox/video-edit/output_with_subtitles.mp4 (overwriting the previous version).",
+    "Step 5: Run the script to produce the output video and verify with ffprobe that it has both audio and video streams, the duration is approximately 60.7s, and the video resolution is 576x1024.",
+    "Step 6: Stage and commit all changes: git add create_subtitle_video.py background.png output_with_subtitles.mp4 && git commit -m 'Upgrade subtitle video with ambition-themed background, transitions, and styled subtitles'"
+  ],
+  "acceptance_criteria": [
+    "background.png exists at /projects/sandbox/video-edit/background.png and is a dark themed 576x1024 image",
+    "output_with_subtitles.mp4 exists and has both video and audio streams",
+    "Video stream is 576x1024 resolution",
+    "Audio stream is AAC codec (untouched copy from original)",
+    "Video duration is approximately 60.7 seconds",
+    "The script does not depend on whisper (uses existing subtitles.srt)",
+    "All files are committed to git"
+  ],
+  "verification": [
+    "python3 /projects/sandbox/video-edit/create_subtitle_video.py",
+    "ffprobe -v quiet -print_format json -show_streams /projects/sandbox/video-edit/output_with_subtitles.mp4 | python3 -c \"import json,sys; d=json.load(sys.stdin); streams=d['streams']; v=[s for s in streams if s['codec_type']=='video'][0]; a=[s for s in streams if s['codec_type']=='audio'][0]; assert v['width']==576 and v['height']==1024, f'Bad res: {v[\"width\"]}x{v[\"height\"]}'; assert a['codec_name']=='aac', f'Bad audio codec: {a[\"codec_name\"]}'; print('OK: 576x1024 video + AAC audio')\"",
+    "test -f /projects/sandbox/video-edit/background.png && python3 -c \"from PIL import Image; img=Image.open('/projects/sandbox/video-edit/background.png'); assert img.size==(576,1024), f'Bad size: {img.size}'; print('OK: background.png is 576x1024')\""
+  ],
+  "blocked_reason": null,
+  "findings": "Script ran successfully on first attempt. Background generation uses numpy+Pillow with radial gradients, geometric patterns, and vignette effects. ffmpeg composed video with force_style subtitles (golden/amber ASS styling with Noto Sans font), fade-in/out, and codec-copied audio. Output verified: 576x1024 H264 video, AAC audio, 60.7s duration. Deprecation warnings from Pillow about 'mode' parameter in Image.fromarray - cosmetic only, does not affect output."
+}
