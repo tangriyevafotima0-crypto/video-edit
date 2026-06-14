@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "feat",
   "description": "Install dependencies (openai-whisper, ffmpeg-python) and create the complete Python script that: 1) extracts audio from the source video, 2) transcribes it with Whisper (English), 3) generates an SRT subtitle file, 4) creates a new video with black background, white stylish subtitles (Noto Sans Bold), and the original untouched audio track. Then run the script to produce the output video.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Install Python dependencies: pip install openai-whisper ffmpeg-python",
     "Create script /projects/sandbox/video-edit/create_subtitle_video.py that does the following pipeline:",
@@ -28,5 +28,5 @@
     "test -f /projects/sandbox/video-edit/subtitles.srt && echo 'OK: subtitles.srt exists'"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "Whisper base model transcribed 9 segments of English audio. Used force_style approach for subtitle styling to avoid issues with bracket characters in font path. Audio copied with -c:a copy (AAC, 44100Hz, stereo). Output video: 576x1024, H.264, 30fps, ~0.5MB. Audio intermediate file (audio.aac) also generated but not committed."
 }
