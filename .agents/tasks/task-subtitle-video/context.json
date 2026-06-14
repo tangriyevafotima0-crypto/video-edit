@@ -1,0 +1,29 @@
+{
+  "project_type": "Python video processing pipeline",
+  "language": "Python",
+  "build_system": "pip for dependencies, script-based execution",
+  "test_framework": "manual verification (video output)",
+  "build_command": "pip install openai-whisper ffmpeg-python",
+  "test_command": "python3 create_subtitle_video.py",
+  "verification_instructions": "Run the script, verify output video exists and has audio+video streams with subtitles burned in",
+  "snapshot_or_generated_files": "output_with_subtitles.mp4 is generated but should be committed as the deliverable",
+  "setup_instructions": "pip install openai-whisper ffmpeg-python",
+  "environment_constraints": "OPEN_INTERNET - full access. Python 3.9 via pyenv. ffmpeg available at /usr/local/bin/ffmpeg. Noto Sans Bold font available at /usr/share/fonts/google-noto-vf/NotoSans[wght].ttf",
+  "contribution_requirements": "Commit both the script and the output video to the repository",
+  "key_patterns": "Single script pipeline: extract audio -> whisper transcription -> generate subtitle file -> render video with black bg + subtitles + original audio",
+  "relevant_files": [
+    "/projects/sandbox/video-edit/SnapTikZ.App_7522766063323385095.mp4"
+  ],
+  "directory_structure": "Flat repository with source video file. Script and output will be added at root level.",
+  "source_video_info": {
+    "path": "/projects/sandbox/video-edit/SnapTikZ.App_7522766063323385095.mp4",
+    "duration_seconds": 62.3,
+    "video_resolution": "576x1024",
+    "video_codec": "h264",
+    "video_fps": 30,
+    "audio_codec": "aac",
+    "audio_sample_rate": 44100,
+    "audio_channels": 2,
+    "audio_language": "English"
+  }
+}

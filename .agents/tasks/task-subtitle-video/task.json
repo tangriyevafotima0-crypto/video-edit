@@ -1,0 +1,7 @@
+{
+  "task_id": "task-subtitle-video",
+  "task_description": "Extract audio from source video, transcribe English speech to subtitles using Whisper, and create a new video with black background, white stylish subtitles, and the original untouched audio",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001"],
+  "blocked_reason": null
+}

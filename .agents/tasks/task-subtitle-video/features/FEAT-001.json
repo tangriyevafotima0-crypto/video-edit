@@ -1,0 +1,32 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Install dependencies (openai-whisper, ffmpeg-python) and create the complete Python script that: 1) extracts audio from the source video, 2) transcribes it with Whisper (English), 3) generates an SRT subtitle file, 4) creates a new video with black background, white stylish subtitles (Noto Sans Bold), and the original untouched audio track. Then run the script to produce the output video.",
+  "status": "in_progress",
+  "steps": [
+    "Install Python dependencies: pip install openai-whisper ffmpeg-python",
+    "Create script /projects/sandbox/video-edit/create_subtitle_video.py that does the following pipeline:",
+    "Step A: Extract audio from SnapTikZ.App_7522766063323385095.mp4 using ffmpeg - copy the audio stream without re-encoding to preserve it completely untouched (e.g., extract to audio.aac with -acodec copy)",
+    "Step B: Use openai-whisper (model 'base' or 'small' for speed) to transcribe the extracted audio in English, getting word-level or segment-level timestamps",
+    "Step C: Generate an SRT subtitle file (subtitles.srt) from the Whisper transcription segments with proper timing",
+    "Step D: Use ffmpeg to create the final output video: generate a black background video at 576x1024 resolution, 30fps, duration matching the audio (~62.3s), burn in the subtitles from the SRT file using the ASS subtitle filter with white color, bold Noto Sans font (fontfile=/usr/share/fonts/google-noto-vf/NotoSans[wght].ttf), good font size (~24-28), centered at bottom of frame with margin, and mux in the original untouched audio track",
+    "Step E: Save output as /projects/sandbox/video-edit/output_with_subtitles.mp4",
+    "Run the script: cd /projects/sandbox/video-edit && python3 create_subtitle_video.py",
+    "Verify the output video exists and has both audio and video streams using ffprobe"
+  ],
+  "acceptance_criteria": [
+    "Script /projects/sandbox/video-edit/create_subtitle_video.py exists and is executable",
+    "Running the script produces /projects/sandbox/video-edit/output_with_subtitles.mp4",
+    "The output video has a video stream (black background with white subtitle text burned in)",
+    "The output video has an audio stream that is the original audio from the source (untouched/copy)",
+    "The output video duration is approximately 62 seconds matching the source",
+    "A subtitles.srt file is generated as intermediate artifact"
+  ],
+  "verification": [
+    "python3 /projects/sandbox/video-edit/create_subtitle_video.py",
+    "ffprobe -v quiet -print_format json -show_streams /projects/sandbox/video-edit/output_with_subtitles.mp4 | python3 -c \"import json,sys; d=json.load(sys.stdin); streams=d['streams']; assert any(s['codec_type']=='video' for s in streams); assert any(s['codec_type']=='audio' for s in streams); print('OK: video has both audio and video streams')\"",
+    "test -f /projects/sandbox/video-edit/subtitles.srt && echo 'OK: subtitles.srt exists'"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}
